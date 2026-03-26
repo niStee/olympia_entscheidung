@@ -6,9 +6,10 @@ Built for the **Ratsbürgerentscheid Düsseldorf – Olympia-Bewerbung Rhein-Ruh
 
 ## Features
 
-- **No backend required** – content comes from local JSON files in `/content/`
+- **Content-driven app** – editorial content comes from local JSON files in `/content/`
 - **PWA** – installable, works offline after first visit
-- **Privacy-first** – answers stored only in browser localStorage, no tracking, no analytics
+- **Local answer storage** – quiz answers stay in browser `localStorage`
+- **Lightweight server analytics** – counts unique visitors, completed runs, and average score via an internal API and a Docker-mounted `/data` volume
 - **Mobile-first** – optimised for phones, accessible on all screen sizes
 - **Neutral information section** – factual overview of the referendum at `/info`
 
@@ -20,6 +21,7 @@ Built for the **Ratsbürgerentscheid Düsseldorf – Olympia-Bewerbung Rhein-Ruh
 | Styling | Tailwind CSS |
 | PWA | next-pwa (Workbox) |
 | State | React Context + localStorage |
+| Analytics | Next.js route handler + JSON file in `/data` |
 | Deployment | Docker + Caddy (automatic HTTPS) |
 | Node | LTS 20 |
 
@@ -51,6 +53,8 @@ npm run type-check
 npm run lint
 npm run format
 ```
+
+Note: `npm run type-check` currently fails because the Jest test files are included without Jest globals in `tsconfig.json`. `npm run build` is the more reliable validation step for the app at the moment.
 
 ---
 
@@ -164,6 +168,18 @@ make deploy
 ```
 
 This syncs files and rebuilds containers without touching the server's `.env`.
+
+### Analytics Storage
+
+The app stores anonymous usage statistics in `/data/analytics.json` inside the app container. In Docker Compose this path is backed by the `analytics_data` volume, so counters survive container rebuilds and restarts.
+
+Tracked values:
+
+- unique visitors (deduplicated by a first-party cookie)
+- completed quiz runs
+- average result score
+
+The internal statistics page is available at `/intern/statistik` and is marked `noindex`.
 
 ---
 
@@ -286,7 +302,7 @@ ssh root@159.195.47.156 "cd /opt/wahl-check && docker compose down -v"
 | **Caddy over Nginx** | Automatic TLS renewal, single config file, no certbot needed |
 | **App on port 8081** | Avoids conflict with system services on 3000/8080; host-exposed for monitoring |
 | **Content as mounted volume** | Content updates don't require container rebuild |
-| **No database** | All content is static JSON; answers stored in browser localStorage only |
+| **No database server** | Content is static JSON; quiz answers stay in browser localStorage; analytics are persisted as a small JSON file in `/data` |
 | **`deploy.conf` over `.env`** | Single source of truth for both local scripts and documentation; `.env` is generated server-side |
 | **Systemd service** | Ensures containers restart after reboot without depending on Docker restart policies alone |
 
@@ -311,7 +327,7 @@ ssh root@159.195.47.156 "cd /opt/wahl-check && docker compose down -v"
 │   ├── app/              # Next.js pages (App Router)
 │   ├── components/       # UI + layout + feature components
 │   ├── context/          # QuizContext (React state)
-│   ├── lib/              # content-loader, info-loader, storage, matching
+│   ├── lib/              # content-loader, info-loader, storage, matching, analytics
 │   └── types/            # TypeScript types
 ├── public/               # Static assets, manifest, PWA icons
 ├── scripts/
