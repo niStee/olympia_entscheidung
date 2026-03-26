@@ -64,7 +64,7 @@ export default function MethoPage() {
             {[
               ["Wichtig", "Faktor ×2 (doppeltes Gewicht)"],
               ["Neutral", "Faktor ×1 (normales Gewicht)"],
-              ["Unwichtig", "Faktor ×1 (gleiche Gewichtung wie Neutral)"],
+              ["Unwichtig", "Faktor ×0,5 (halbes Gewicht)"],
             ].map(([label, value]) => (
               <div
                 key={label}
@@ -75,10 +75,6 @@ export default function MethoPage() {
               </div>
             ))}
           </dl>
-          <p className="text-xs text-neutral-500 mt-2">
-            Hinweis: &bdquo;Unwichtig&ldquo; hat technisch denselben Faktor wie &bdquo;Neutral&ldquo; (×1).
-            Zukünftige Versionen können hier eine abgestufte Gewichtung einführen.
-          </p>
         </Card>
 
         <Card as="section">

@@ -29,7 +29,7 @@ const RELEVANCE_OPTIONS: Array<{
   label: string;
   activeClass: string;
 }> = [
-  { value: "low",       label: "Unwichtig",  activeClass: "border-neutral-300 bg-neutral-50 text-neutral-500" },
+  { value: "low",       label: "Unwichtig",  activeClass: "border-sky-400 bg-sky-50 text-sky-800 shadow-sm" },
   { value: "normal",    label: "Neutral",    activeClass: "border-neutral-400 bg-neutral-100 text-neutral-700" },
   { value: "important", label: "Wichtig",    activeClass: "border-primary-500 bg-primary-50 text-primary-800" },
 ];

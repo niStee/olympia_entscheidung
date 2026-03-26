@@ -15,7 +15,7 @@ const ANSWER_SCORE: Record<AnswerValue, number> = {
 const RELEVANCE_WEIGHT: Record<RelevanceValue, number> = {
   important: 2,
   normal: 1,
-  low: 1,
+  low: 0.5,
 };
 
 /** Descriptive label bands (neutral, non-recommending) */

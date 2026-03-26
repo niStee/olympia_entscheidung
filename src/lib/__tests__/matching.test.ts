@@ -16,6 +16,55 @@ const QUESTIONS_WITH_DIRECTION = [
 ];
 
 describe("calculateScoreBreakdown", () => {
+  it("calculates a mixed weighted scenario with exact raw, min, max, and percent values", () => {
+    const answers = {
+      q1: "agree" as const,
+      q2: "disagree" as const,
+      q3: "lean-agree" as const,
+    };
+    const relevances = {
+      q1: "important" as const,
+      q2: "low" as const,
+      q3: "normal" as const,
+    };
+
+    const result = calculateScoreBreakdown(answers, relevances, QUESTIONS);
+
+    // q1: +2 * 1 * 2   = +4
+    // q2: -2 * 1 * 0.5 = -1
+    // q3: +1 * 2 * 1   = +2
+    // raw = +5, max = 4 + 1 + 4 = 9, min = -9
+    // normalized = (5 - (-9)) / (9 - (-9)) * 100 = 14/18 * 100 = 77.78 -> 78
+    expect(result.rawScore).toBe(5);
+    expect(result.maxPossible).toBe(9);
+    expect(result.minPossible).toBe(-9);
+    expect(result.normalizedPercent).toBe(78);
+  });
+
+  it("calculates the exact midpoint for a balanced mixed scenario", () => {
+    const answers = {
+      q1: "agree" as const,
+      q2: "disagree" as const,
+      q3: "neutral" as const,
+    };
+    const relevances = {
+      q1: "low" as const,
+      q2: "low" as const,
+      q3: "important" as const,
+    };
+
+    const result = calculateScoreBreakdown(answers, relevances, QUESTIONS);
+
+    // q1: +2 * 1 * 0.5 = +1
+    // q2: -2 * 1 * 0.5 = -1
+    // q3:  0 * 2 * 2   =  0
+    // raw = 0, max = 1 + 1 + 8 = 10, min = -10
+    expect(result.rawScore).toBe(0);
+    expect(result.maxPossible).toBe(10);
+    expect(result.minPossible).toBe(-10);
+    expect(result.normalizedPercent).toBe(50);
+  });
+
   it("returns 50 when all questions are skipped", () => {
     const result = calculateScoreBreakdown({}, {}, QUESTIONS);
     expect(result.normalizedPercent).toBe(50);
@@ -50,6 +99,15 @@ describe("calculateScoreBreakdown", () => {
     expect(importantResult.normalizedPercent).toBe(100);
     // But raw score should differ
     expect(importantResult.rawScore).toBe(normalResult.rawScore * 2);
+  });
+
+  it("halves the contribution of 'low' questions", () => {
+    const answers = { q1: "agree" as const, q2: "skip" as const, q3: "skip" as const };
+    const normalResult = calculateScoreBreakdown(answers, { q1: "normal" }, QUESTIONS);
+    const lowResult = calculateScoreBreakdown(answers, { q1: "low" }, QUESTIONS);
+    expect(normalResult.normalizedPercent).toBe(100);
+    expect(lowResult.normalizedPercent).toBe(100);
+    expect(lowResult.rawScore).toBe(normalResult.rawScore / 2);
   });
 
   it("handles mixed answers correctly", () => {
@@ -132,6 +190,31 @@ describe("calculateScoreBreakdown", () => {
     const result = calculateScoreBreakdown(answers, {}, allContra);
     // Both contra agree: directed = -2 each, raw=-4, max=4, min=-4 → (-4-(-4))/(4-(-4))=0/8=0%
     expect(result.normalizedPercent).toBe(0);
+  });
+
+  it("handles mixed pro and contra questions with different relevances exactly", () => {
+    const answers = {
+      q1: "lean-agree" as const,
+      q2: "lean-disagree" as const,
+      q3: "disagree" as const,
+    };
+    const relevances = {
+      q1: "important" as const,
+      q2: "low" as const,
+      q3: "normal" as const,
+    };
+
+    const result = calculateScoreBreakdown(answers, relevances, QUESTIONS_WITH_DIRECTION);
+
+    // q1 pro:    +1 * 1 * 2   = +2
+    // q2 contra: -1 -> invert = +1; +1 * 1 * 0.5 = +0.5
+    // q3 pro:    -2 * 1 * 1   = -2
+    // raw = 0.5, max = 4 + 1 + 2 = 7, min = -7
+    // normalized = (0.5 - (-7)) / (7 - (-7)) * 100 = 7.5/14 * 100 = 53.57 -> 54
+    expect(result.rawScore).toBe(0.5);
+    expect(result.maxPossible).toBe(7);
+    expect(result.minPossible).toBe(-7);
+    expect(result.normalizedPercent).toBe(54);
   });
 
   it("direction undefined defaults to pro behavior", () => {
