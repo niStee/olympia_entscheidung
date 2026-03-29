@@ -78,7 +78,7 @@ if [[ "$TEST_MODE" == "true" ]]; then
     "cd $REMOTE_APP_DIR && PROJECT_NAME='$PROJECT_NAME' APP_PORT='$APP_PORT' INFO_PORT='$INFO_PORT' QUIZ_URL='http://localhost:$APP_PORT' TEST_MODE='true' docker compose up --build -d --remove-orphans app info"
 else
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
-    "cd $REMOTE_APP_DIR && if [ -n '$INFO_DOMAIN' ]; then if grep -q '^INFO_DOMAIN=' .env 2>/dev/null; then sed -i \"s|^INFO_DOMAIN=.*|INFO_DOMAIN=$INFO_DOMAIN|\" .env; else printf '\nINFO_DOMAIN=%s\n' '$INFO_DOMAIN' >> .env; fi; fi && docker compose up --build -d --remove-orphans"
+    "cd $REMOTE_APP_DIR && docker compose up --build -d --remove-orphans app caddy"
 fi
 
 if [[ "$TEST_MODE" == "true" ]]; then

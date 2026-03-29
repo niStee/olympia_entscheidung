@@ -196,7 +196,7 @@ deploy_containers() {
   if [[ "$TEST_MODE" != "true" ]]; then
     docker pull caddy:2-alpine --quiet || true
     docker compose down --remove-orphans 2>/dev/null || true
-    docker compose up --build -d
+    docker compose up --build -d app caddy
   else
     PROJECT_NAME="$PROJECT_NAME" APP_PORT="$APP_PORT" INFO_PORT="$INFO_PORT" QUIZ_URL="$QUIZ_URL" TEST_MODE="$TEST_MODE" \
       docker compose stop app info 2>/dev/null || true
@@ -234,7 +234,7 @@ health_check() {
 configure_autostart() {
   log "Configuring systemd service for auto-start on reboot..."
 
-  local exec_start="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose up -d --remove-orphans"
+  local exec_start="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose up -d --remove-orphans app caddy"
   local exec_stop="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose down"
   if [[ "$TEST_MODE" == "true" ]]; then
     exec_start="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} INFO_PORT=${INFO_PORT} QUIZ_URL=${QUIZ_URL} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose up -d --remove-orphans app info"
