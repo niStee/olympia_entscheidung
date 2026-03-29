@@ -13,7 +13,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: wahl-check-app
+    container_name: "${PROJECT_NAME:-wahl-check}-app"
     restart: unless-stopped
     environment:
       - NODE_ENV=production
@@ -22,8 +22,8 @@ services:
       - INTERNAL_STATS_ENABLED=${INTERNAL_STATS_ENABLED:-false}
     volumes:
       # Content files are mounted read-only so they can be updated without rebuild
-      - ./content:/app/content:ro
-      - /data:/data
+      - ./apps/olympia/content:/app/content:ro
+      - ${HOST_DATA_DIR:-/data}:/data
     ports:
       # Bound to localhost only. Public traffic goes through Caddy on 443.
       - "127.0.0.1:${APP_PORT:-8081}:8081"
@@ -36,9 +36,22 @@ services:
       retries: 3
       start_period: 30s
 
+  info:
+    build:
+      context: .
+      dockerfile: Dockerfile.info
+      args:
+        QUIZ_URL: ${QUIZ_URL:-https://${DOMAIN:-localhost}}
+    container_name: "${PROJECT_NAME:-wahl-check}-info"
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${INFO_PORT:-8083}:80"
+    networks:
+      - web
+
   caddy:
     image: caddy:2-alpine
-    container_name: wahl-check-caddy
+    container_name: "${PROJECT_NAME:-wahl-check}-caddy"
     restart: unless-stopped
     ports:
       - "80:80"

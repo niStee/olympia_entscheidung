@@ -2,7 +2,7 @@
 # Caddyfile – Reverse proxy configuration for Wahl-Check
 #
 # Variables are injected from the container environment by Docker Compose:
-#   CADDY_DOMAIN – public domain name (e.g. example.com)
+#   CADDY_DOMAIN – public domain name for the quiz app
 #   CADDY_EMAIL  – email for ACME / Let's Encrypt certificate registration
 #
 # Caddy automatically:

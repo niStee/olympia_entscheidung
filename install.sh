@@ -16,6 +16,7 @@
 #   --app-port <port>      Internal app port            (default: 8081)
 #   --remote-dir <path>    Remote project directory     (default: /opt/wahl-check)
 #   --project-name <name>  Project identifier           (default: wahl-check)
+#   --test                 Deploy isolated test app only (localhost:8082, no Caddy)
 #
 # Example:
 #   ./install.sh --domain example.com --email admin@example.com
@@ -49,8 +50,11 @@ SSH_KEY="${SSH_KEY:-}"
 REMOTE_APP_DIR="${REMOTE_APP_DIR:-/opt/wahl-check}"
 PROJECT_NAME="${PROJECT_NAME:-wahl-check}"
 APP_PORT="${APP_PORT:-8081}"
+INFO_PORT="${INFO_PORT:-8083}"
 DOMAIN="${DOMAIN:-}"
+INFO_DOMAIN="${INFO_DOMAIN:-}"
 EMAIL="${EMAIL:-}"
+TEST_MODE="${TEST_MODE:-false}"
 
 # ── Parse CLI overrides ───────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -62,12 +66,20 @@ while [[ $# -gt 0 ]]; do
     --app-port)     APP_PORT="$2";        shift 2 ;;
     --remote-dir)   REMOTE_APP_DIR="$2";  shift 2 ;;
     --project-name) PROJECT_NAME="$2";    shift 2 ;;
+    --test)         TEST_MODE="true";     shift ;;
     --help|-h)
       grep '^#' "$0" | grep -v '#!/' | sed 's/^# //' | sed 's/^#//'
       exit 0 ;;
     *) die "Unknown option: $1. Run ./install.sh --help for usage." ;;
   esac
 done
+
+if [[ "$TEST_MODE" == "true" ]]; then
+  [[ "$APP_PORT" == "8081" ]] && APP_PORT="8082"
+  [[ "$INFO_PORT" == "8083" ]] && INFO_PORT="8083"
+  [[ "$REMOTE_APP_DIR" == "/opt/wahl-check" ]] && REMOTE_APP_DIR="/opt/wahl-check-test"
+  [[ "$PROJECT_NAME" == "wahl-check" ]] && PROJECT_NAME="wahl-check-test"
+fi
 
 # ── Build SSH options ─────────────────────────────────────────────────────────
 SSH_OPTS=(-o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -o BatchMode=yes)
@@ -87,21 +99,30 @@ validate_config() {
     err "SSH_HOST is required. Set it in deploy.conf or pass --host user@host"
     missing=1
   }
-  [[ -z "$DOMAIN" ]] && {
-    err "DOMAIN is required for HTTPS. Set it in deploy.conf or pass --domain <domain>"
-    missing=1
-  }
-  [[ -z "$EMAIL" ]] && {
-    err "EMAIL is required for TLS certificate registration. Set it in deploy.conf or pass --email <email>"
-    missing=1
-  }
+  if [[ "$TEST_MODE" != "true" ]]; then
+    [[ -z "$INFO_DOMAIN" && -n "$DOMAIN" ]] && INFO_DOMAIN="volt.${DOMAIN}"
+    [[ -z "$DOMAIN" ]] && {
+      err "DOMAIN is required for HTTPS. Set it in deploy.conf or pass --domain <domain>"
+      missing=1
+    }
+    [[ -z "$EMAIL" ]] && {
+      err "EMAIL is required for TLS certificate registration. Set it in deploy.conf or pass --email <email>"
+      missing=1
+    }
+  fi
   if [[ $missing -eq 1 ]]; then die "Missing required configuration. Aborting."; fi
   true
   log "  SSH target   : $SSH_HOST"
   log "  Remote dir   : $REMOTE_APP_DIR"
-  log "  Domain       : $DOMAIN"
   log "  App port     : $APP_PORT (internal + localhost-only host binding)"
-  log "  Public access: https://$DOMAIN (HTTPS via Caddy)"
+  if [[ "$TEST_MODE" == "true" ]]; then
+    log "  Mode         : isolated test deployment"
+    log "  Public access: disabled (no Caddy / no DNS changes)"
+  else
+    log "  Domain       : $DOMAIN"
+    log "  Info domain  : $INFO_DOMAIN"
+    log "  Public access: https://$DOMAIN (HTTPS via Caddy)"
+  fi
 }
 
 # ── Step 1: Check local tools ─────────────────────────────────────────────────
@@ -170,9 +191,13 @@ run_remote_setup() {
 
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
     "DOMAIN='$DOMAIN' \
+     INFO_DOMAIN='$INFO_DOMAIN' \
      EMAIL='$EMAIL' \
      APP_PORT='$APP_PORT' \
+     INFO_PORT='$INFO_PORT' \
+     QUIZ_URL='http://localhost:$APP_PORT' \
      PROJECT_NAME='$PROJECT_NAME' \
+     TEST_MODE='$TEST_MODE' \
      APP_DIR='$REMOTE_APP_DIR' \
      bash $REMOTE_APP_DIR/scripts/remote-setup.sh"
 }
@@ -197,12 +222,32 @@ verify_deployment() {
     warn "Check logs: ./logs.sh"
     warn "TLS provisioning may still be in progress – try https://$DOMAIN in ~60s"
   fi
+
+  if [[ "$TEST_MODE" == "true" ]]; then
+    log "Verifying info site is reachable on localhost:$INFO_PORT ..."
+    max=12
+    attempt=0
+
+    while [[ $attempt -lt $max ]]; do
+      if ssh_run "curl -sf http://localhost:$INFO_PORT > /dev/null 2>&1"; then
+        ok "Info site is responding on http://localhost:$INFO_PORT (via SSH check)"
+        break
+      fi
+      attempt=$((attempt + 1))
+      warn "Info site not yet responding (attempt $attempt/$max) – waiting 5s..."
+      sleep 5
+    done
+
+    if [[ $attempt -eq $max ]]; then
+      warn "Info site did not respond within 60 seconds."
+    fi
+  fi
 }
 
 # ── Local tests ──────────────────────────────────────────────────────────────
 run_local_tests() {
   log "Running local tests before deployment..."
-  if npm test 2>&1 | tail -20; then
+  if pnpm test 2>&1 | tail -20; then
     ok "All tests passed"
   else
     err "Tests failed. Fix test failures before deploying."
@@ -231,8 +276,13 @@ main() {
   echo -e "${GREEN}  ✓ Deployment complete!                               ${NC}"
   echo -e "${GREEN}═══════════════════════════════════════════════════════${NC}"
   echo ""
-  echo -e "  HTTPS (public): ${CYAN}https://$DOMAIN${NC}"
-  echo -e "  Direct (server-local): ${CYAN}http://localhost:$APP_PORT${NC}"
+  if [[ "$TEST_MODE" == "true" ]]; then
+    echo -e "  Test app (server-local): ${CYAN}http://localhost:$APP_PORT${NC}"
+    echo -e "  Test info (server-local): ${CYAN}http://localhost:$INFO_PORT${NC}"
+  else
+    echo -e "  HTTPS (public): ${CYAN}https://$DOMAIN${NC}"
+    echo -e "  Direct (server-local): ${CYAN}http://localhost:$APP_PORT${NC}"
+  fi
   echo ""
   echo -e "  Logs   : ${YELLOW}./logs.sh${NC}"
   echo -e "  Status : ${YELLOW}./status.sh${NC}"
