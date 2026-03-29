@@ -29,5 +29,8 @@ APP_PORT="8081"
 # The DNS A record must point to your server before first run.
 DOMAIN="yourdomain.com"
 
+# Public subdomain for the info site (defaults to volt.<DOMAIN> when omitted)
+INFO_DOMAIN="volt.yourdomain.com"
+
 # Email for Caddy's ACME TLS certificate registration (Let's Encrypt)
 EMAIL="admin@yourdomain.com"

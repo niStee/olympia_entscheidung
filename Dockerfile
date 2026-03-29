@@ -38,6 +38,8 @@ COPY --from=builder /app/apps/olympia/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/olympia/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/olympia/.next/static ./.next/static
 COPY --from=builder /app/apps/olympia/content ./content
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules/.pnpm /app/node_modules/.pnpm
+RUN ln -s /app/node_modules /node_modules
 
 USER nextjs
 # PORT is set via docker-compose environment (default 8081 in production)

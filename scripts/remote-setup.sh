@@ -20,17 +20,29 @@ warn() { echo -e "${YELLOW}[remote $(date +%H:%M:%S)] ⚠${NC} $*"; }
 die()  { echo -e "${RED}[remote] ERROR: $*${NC}" >&2; exit 1; }
 
 # ── Validate required env ─────────────────────────────────────────────────────
-: "${DOMAIN:?DOMAIN must be set}"
-: "${EMAIL:?EMAIL must be set}"
 APP_PORT="${APP_PORT:-8081}"
+INFO_PORT="${INFO_PORT:-8083}"
 PROJECT_NAME="${PROJECT_NAME:-wahl-check}"
 APP_DIR="${APP_DIR:-/opt/wahl-check}"
+TEST_MODE="${TEST_MODE:-false}"
+HOST_DATA_DIR="${HOST_DATA_DIR:-${APP_DIR}/data}"
+INFO_DOMAIN="${INFO_DOMAIN:-}"
+QUIZ_URL="${QUIZ_URL:-https://${DOMAIN:-localhost}}"
+
+if [[ "$TEST_MODE" != "true" ]]; then
+  : "${DOMAIN:?DOMAIN must be set}"
+  : "${EMAIL:?EMAIL must be set}"
+  [[ -z "$INFO_DOMAIN" ]] && INFO_DOMAIN="volt.${DOMAIN}"
+fi
 
 log "=== Remote Setup: $PROJECT_NAME ==="
 log "  Domain  : $DOMAIN"
 log "  Email   : $EMAIL"
 log "  Port    : $APP_PORT"
+log "  InfoPort: $INFO_PORT"
 log "  Dir     : $APP_DIR"
+log "  Test    : $TEST_MODE"
+[[ -n "$INFO_DOMAIN" ]] && log "  Info    : $INFO_DOMAIN"
 
 # ── 1. System packages ────────────────────────────────────────────────────────
 install_system_packages() {
@@ -115,6 +127,11 @@ install_docker() {
 #   443/udp – HTTP/3 QUIC
 #   $APP_PORT – Localhost-only app access on host (for health checks / admin debugging)
 configure_firewall() {
+  if [[ "$TEST_MODE" == "true" ]]; then
+    log "Skipping UFW changes for isolated test deployment"
+    return 0
+  fi
+
   log "Configuring UFW firewall..."
 
   # Add rules before enabling to avoid locking out SSH
@@ -146,8 +163,13 @@ generate_env_file() {
 DOMAIN=${DOMAIN}
 EMAIL=${EMAIL}
 APP_PORT=${APP_PORT}
+INFO_PORT=${INFO_PORT}
 PROJECT_NAME=${PROJECT_NAME}
+INFO_DOMAIN=${INFO_DOMAIN}
 INTERNAL_STATS_ENABLED=false
+TEST_MODE=${TEST_MODE}
+HOST_DATA_DIR=${HOST_DATA_DIR}
+QUIZ_URL=${QUIZ_URL}
 
 # Passed to the Next.js app container
 NEXT_PUBLIC_APP_URL=https://${DOMAIN}
@@ -159,10 +181,10 @@ EOF
 
 # ── 5. Prepare host data directory ────────────────────────────────────────────
 prepare_data_dir() {
-  log "Preparing host data directory at /data ..."
-  mkdir -p /data
-  chown 1001:1001 /data
-  chmod 0755 /data
+  log "Preparing host data directory at ${HOST_DATA_DIR} ..."
+  mkdir -p "${HOST_DATA_DIR}"
+  chown 1001:1001 "${HOST_DATA_DIR}"
+  chmod 0755 "${HOST_DATA_DIR}"
   ok "Host data directory ready"
 }
 
@@ -171,14 +193,18 @@ deploy_containers() {
   log "Building and starting Docker containers..."
   cd "${APP_DIR}"
 
-  # Pull latest Caddy image first (silent failures are OK for first run)
-  docker pull caddy:2-alpine --quiet || true
-
-  # Stop existing containers gracefully (idempotent)
-  docker compose down --remove-orphans 2>/dev/null || true
-
-  # Build app image and start all services
-  docker compose up --build -d
+  if [[ "$TEST_MODE" != "true" ]]; then
+    docker pull caddy:2-alpine --quiet || true
+    docker compose down --remove-orphans 2>/dev/null || true
+    docker compose up --build -d
+  else
+    PROJECT_NAME="$PROJECT_NAME" APP_PORT="$APP_PORT" INFO_PORT="$INFO_PORT" QUIZ_URL="$QUIZ_URL" TEST_MODE="$TEST_MODE" \
+      docker compose stop app info 2>/dev/null || true
+    PROJECT_NAME="$PROJECT_NAME" APP_PORT="$APP_PORT" INFO_PORT="$INFO_PORT" QUIZ_URL="$QUIZ_URL" TEST_MODE="$TEST_MODE" \
+      docker compose rm -f app info 2>/dev/null || true
+    PROJECT_NAME="$PROJECT_NAME" APP_PORT="$APP_PORT" INFO_PORT="$INFO_PORT" QUIZ_URL="$QUIZ_URL" TEST_MODE="$TEST_MODE" \
+      docker compose up --build -d app info
+  fi
 
   ok "Containers started"
   docker compose ps
@@ -208,7 +234,14 @@ health_check() {
 configure_autostart() {
   log "Configuring systemd service for auto-start on reboot..."
 
-  cat > /etc/systemd/system/wahl-check.service <<EOF
+  local exec_start="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose up -d --remove-orphans"
+  local exec_stop="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose down"
+  if [[ "$TEST_MODE" == "true" ]]; then
+    exec_start="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} INFO_PORT=${INFO_PORT} QUIZ_URL=${QUIZ_URL} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose up -d --remove-orphans app info"
+    exec_stop="/usr/bin/env PROJECT_NAME=${PROJECT_NAME} APP_PORT=${APP_PORT} INFO_PORT=${INFO_PORT} QUIZ_URL=${QUIZ_URL} TEST_MODE=${TEST_MODE} HOST_DATA_DIR=${HOST_DATA_DIR} /usr/bin/docker compose stop app info"
+  fi
+
+  cat > "/etc/systemd/system/${PROJECT_NAME}.service" <<EOF
 [Unit]
 Description=Wahl-Check Docker Compose Application
 Requires=docker.service
@@ -219,8 +252,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=${APP_DIR}
-ExecStart=/usr/bin/docker compose up -d --remove-orphans
-ExecStop=/usr/bin/docker compose down
+ExecStart=${exec_start}
+ExecStop=${exec_stop}
 StandardOutput=journal
 Restart=no
 
@@ -229,15 +262,20 @@ WantedBy=multi-user.target
 EOF
 
   systemctl daemon-reload
-  systemctl enable wahl-check.service
+  systemctl enable "${PROJECT_NAME}.service"
 
-  ok "Systemd service 'wahl-check' enabled (auto-starts on reboot)"
+  ok "Systemd service '${PROJECT_NAME}' enabled (auto-starts on reboot)"
 }
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 # Check if domain DNS resolves to this server's IP (warn only, non-fatal)
 verify_dns() {
+  if [[ "$TEST_MODE" == "true" ]]; then
+    log "Skipping DNS verification for isolated test deployment"
+    return 0
+  fi
+
   local server_ip
   server_ip=$(hostname -I | awk '{print $1}')
 
@@ -277,8 +315,14 @@ main() {
   echo ""
   ok "=== Remote setup complete ==="
   log "  Server-local app check : http://localhost:${APP_PORT}"
-  log "  HTTPS (Caddy) : https://${DOMAIN}"
-  log "  TLS cert      : provisioned automatically by Caddy (allow ~60s)"
+  if [[ "$TEST_MODE" == "true" ]]; then
+    log "  Public site   : unchanged"
+    log "  Caddy         : not started for test deployment"
+    log "  Info test     : http://localhost:${INFO_PORT}"
+  else
+    log "  HTTPS (Caddy) : https://${DOMAIN}"
+    log "  TLS cert      : provisioned automatically by Caddy (allow ~60s)"
+  fi
   log "  Logs          : docker compose -f ${APP_DIR}/docker-compose.yml logs -f"
 }
 

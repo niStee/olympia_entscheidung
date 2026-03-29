@@ -1,15 +1,11 @@
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
-
-// In production, these would be proper domain URLs
-const OLYMPIA_APP_URL = import.meta.env.PROD
-  ? "/wahl-check" // Production: same domain, different path
-  : "http://localhost:3000"; // Development: different port
+import { QUIZ_URL } from "../lib/urls";
 
 const navLinks = [
   { label: "Informationen", href: "#info-gaps", internal: true },
   { label: "Parteipositionen", href: "#political-positions", internal: true },
-  { label: "Wahl-Check starten", href: OLYMPIA_APP_URL, internal: false, highlight: true },
+  { label: "Wahl-Check starten", href: QUIZ_URL, internal: false, highlight: true },
 ];
 
 function Navbar() {

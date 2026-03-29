@@ -1,7 +1,5 @@
 import { Info, ArrowRight } from "lucide-react";
-
-// In production, these would be proper domain URLs
-const OLYMPIA_APP_URL = import.meta.env.PROD ? "/wahl-check" : "http://localhost:3000";
+import { QUIZ_URL } from "../lib/urls";
 
 function Hero() {
   return (
@@ -35,7 +33,7 @@ function Hero() {
               </p>
             </div>
             <a
-              href={OLYMPIA_APP_URL}
+              href={QUIZ_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors whitespace-nowrap"
