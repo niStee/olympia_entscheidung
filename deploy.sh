@@ -72,6 +72,10 @@ rsync "${RSYNC_OPTS[@]}" \
 
 ok "Files synced"
 
+log "Ensuring data directory permissions..."
+ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
+  "mkdir -p $REMOTE_APP_DIR/data && chown 1001:1001 $REMOTE_APP_DIR/data"
+
 log "Rebuilding and restarting containers..."
 if [[ "$TEST_MODE" == "true" ]]; then
   ssh "${SSH_OPTS[@]}" "$SSH_HOST" \
